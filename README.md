@@ -8,7 +8,7 @@ table style. So it earned a proper home.
 
 ## What it does
 - `orbit` — account-wide credits + per-key usage with caps, bars and totals
-- `orbit --days N [--key NAME]` — per-model/per-day activity for the last 30 UTC days
+- `orbit days N [--key NAME]` — per-model/per-day activity for the last 30 UTC days
 - `orbit --set-key` — rotate the stored management key (0600, never typed by an agent)
 
 ## Install
