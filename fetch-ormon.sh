@@ -8,7 +8,7 @@ tmp=$(mktemp -d)
 $hx omers-backup-laptop -c 'echo "===WRAPPER==="; cat ~/.local/bin/ormon; echo "===REAL==="; cat ~/.local/bin/ormon.real' > "$tmp/dump.txt"
 # split the dump
 sed -n '/^===WRAPPER===$/,/^===REAL===$/p' "$tmp/dump.txt" | sed '1d;$d' > ormon.wrapper.sh
-sed -n '/^===REAL===$/,$p'     "$tmp/dump.txt" | sed '1d'    > ormon
+sed -n '/^===REAL===$/,$p'     "$tmp/dump.txt" | sed '1d' | sed '/^=== exit:/q' | sed '$d' > ormon
 chmod 755 ormon
 # sanity: syntax check before committing
 bash -n ormon.wrapper.sh && python3 -c "import ast; ast.parse(open('ormon').read())"

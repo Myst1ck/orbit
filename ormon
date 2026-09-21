@@ -1,0 +1,247 @@
+#!/usr/bin/env python3
+"""OpenRouter account usage monitor — management key, account-wide + per-key usage."""
+
+import argparse
+import os
+import sys
+from datetime import datetime
+
+import requests
+
+BASE = "https://openrouter.ai/api/v1"
+CONFIG_DIR = os.path.expanduser("~/.config/openrouter-monitor")
+KEY_FILE = os.path.join(CONFIG_DIR, "key")
+
+
+class Colors:
+    GREEN = "\033[92m"
+    YELLOW = "\033[93m"
+    RED = "\033[91m"
+    CYAN = "\033[96m"
+    DIM = "\033[2m"
+    BOLD = "\033[1m"
+    RESET = "\033[0m"
+
+
+def load_key() -> str:
+    if os.path.exists(KEY_FILE):
+        key = open(KEY_FILE).read().strip()
+        if key:
+            return key
+    print(f"{Colors.CYAN}First run — paste your OpenRouter *management* key{Colors.RESET}")
+    print(f"{Colors.DIM}(openrouter.ai/settings/keys -> New key -> check 'Management key'){Colors.RESET}")
+    key = input("Management key: ").strip()
+    if not key:
+        sys.exit("No key given.")
+    os.makedirs(CONFIG_DIR, exist_ok=True)
+    with open(KEY_FILE, "w") as f:
+        f.write(key + "\n")
+    os.chmod(KEY_FILE, 0o600)
+    print(f"{Colors.GREEN}Saved to {KEY_FILE} (0600). Run again to see usage.{Colors.RESET}")
+    sys.exit(0)
+
+
+def get(path: str, key: str):
+    r = requests.get(f"{BASE}{path}", headers={"Authorization": f"Bearer {key}"}, timeout=15)
+    r.raise_for_status()
+    return r.json()["data"]
+
+
+def bar(pct: float, width: int = 30) -> str:
+    pct = min(pct, 100.0)
+    filled = int(width * pct / 100)
+    color = Colors.GREEN if pct < 50 else (Colors.YELLOW if pct < 80 else Colors.RED)
+    return f"{color}{'█' * filled}{'░' * (width - filled)} {pct:5.1f}%{Colors.RESET}"
+
+
+def money(v) -> str:
+    return f"${(v or 0):.2f}"
+
+
+def show_activity(key: str, days: int, key_name: str | None, show_models: bool, show_daily: bool):
+    """Usage over the last N days (max 30, API limit)."""
+    import hashlib
+    from collections import defaultdict
+
+    params = {}
+    key_hash = None
+    if key_name:
+        keys = get("/keys", key)
+        rows = keys if isinstance(keys, list) else keys.get("data", [])
+        match = next((k for k in rows if isinstance(k, dict)
+                      and (k.get("name") or k.get("label") or "").lower() == key_name.lower()), None)
+        if not match:
+            avail = ", ".join(sorted((k.get("name") or k.get("label") or "unnamed") for k in rows if isinstance(k, dict)))
+            print(f"{Colors.RED}✗ No key named '{key_name}'. Keys: {avail}{Colors.RESET}")
+            return
+        key_hash = match.get("hash")
+        if not key_hash:
+            print(f"{Colors.RED}✗ Key list gave no hash for '{key_name}'.{Colors.RESET}")
+            return
+        params["api_key_hash"] = key_hash
+
+    days = max(1, min(days, 30))
+    print(f"{Colors.DIM}  Activity · last {days} day(s){' · key: ' + key_name if key_name else ''}{Colors.RESET}\n")
+
+    items = []
+    import datetime as _dt
+    import datetime as _dt2
+    today = _dt.datetime.now(_dt.timezone.utc).date()
+    for d in range(days):
+        params["date"] = (today - _dt.timedelta(days=d + 1)).isoformat()
+        try:
+            page = get("/activity?" + "&".join(f"{a}={b}" for a, b in params.items()), key)
+        except Exception as e:
+            print(f"{Colors.RED}✗ Activity failed: {e}{Colors.RESET}")
+            return
+        items.extend(page if isinstance(page, list) else page.get("data", []))
+
+    if not items:
+        print(f"{Colors.DIM}  No usage in that window.{Colors.RESET}")
+        return
+
+    by_model = defaultdict(lambda: {"usage": 0.0, "requests": 0, "prompt": 0, "completion": 0})
+    by_date = defaultdict(float)
+    for it in items:
+        m = by_model[it.get("model", "unknown")]
+        m["usage"] += it.get("usage", 0) or 0
+        m["requests"] += it.get("requests", 0) or 0
+        m["prompt"] += it.get("prompt_tokens", 0) or 0
+        m["completion"] += it.get("completion_tokens", 0) or 0
+        by_date[it.get("date", "?")] += it.get("usage", 0) or 0
+
+    total = sum(m["usage"] for m in by_model.values())
+    total_req = sum(m["requests"] for m in by_model.values())
+    max_day = max(by_date.values()) or 1.0
+
+    if not show_models and not show_daily:
+        print(f"{Colors.BOLD}  Usage{Colors.RESET}  {Colors.DIM}·  {money(total)} · {total_req} requests · last {days} day(s){Colors.RESET}")
+        try:
+            all_keys = get("/keys", key)
+            krows = all_keys if isinstance(all_keys, list) else all_keys.get("data", [])
+            krows = [k for k in krows if isinstance(k, dict)]
+            cutoff = (today - _dt2.timedelta(days=days)).isoformat()
+            kusages = []
+            for k in krows:
+                khash = k.get("hash")
+                ku, kr = 0.0, 0
+                if khash:
+                    try:
+                        kitems = get(f"/activity?api_key_hash={khash}", key)
+                        kitems = kitems if isinstance(kitems, list) else kitems.get("data", [])
+                        for it in kitems:
+                            if isinstance(it, dict) and it.get("date", "") >= cutoff:
+                                ku += it.get("usage", 0) or 0
+                                kr += it.get("requests", 0) or 0
+                    except Exception:
+                        pass
+                kusages.append((k, ku, kr))
+            kmax = max([u for _, u, _ in kusages] + [0.0001])
+            print(f"  {Colors.DIM}{'─' * 62}{Colors.RESET}")
+            print(f"  {'Name':<22} {'Used':>10} {'Reqs':>7}  Bar")
+            for k, kusage, kreqs in kusages:
+                name = (k.get("name") or k.get("label") or "unnamed")[:22]
+                frac = kusage / kmax
+                seg = "█" * max(1, int(15 * frac)) if kusage else "·"
+                color = Colors.GREEN if frac < .5 else (Colors.YELLOW if frac < .8 else Colors.RED)
+                print(f"  {name:<22} {money(kusage):>10} {kreqs:>7}  {color}{seg:<15}{Colors.RESET}")
+            print(f"  {Colors.DIM}{'─' * 62}{Colors.RESET}")
+        except Exception as e:
+            print(f"{Colors.RED}  ✗ per-key split failed: {e}{Colors.RESET}")
+        return
+    if show_models:
+        print(f"{Colors.BOLD}  Models{Colors.RESET}  {Colors.DIM}·  {money(total)} · {total_req} requests{Colors.RESET}")
+        print(f"  {Colors.DIM}{'─' * 62}{Colors.RESET}")
+        print(f"  {'Model':<34} {'Used':>9} {'Reqs':>7} {'Tokens':>10}")
+        for name, m in sorted(by_model.items(), key=lambda x: x[1]["usage"], reverse=True):
+            toks = m["prompt"] + m["completion"]
+            print(f"  {name[:34]:<34} {money(m['usage']):>9} {m['requests']:>7} {toks:>10,}")
+        print(f"  {Colors.DIM}{'─' * 62}{Colors.RESET}")
+
+    if show_daily:
+        print(f"{Colors.BOLD}  Daily{Colors.RESET}  {Colors.DIM}·  peak {money(max_day)}{Colors.RESET}")
+        print(f"  {Colors.DIM}{'─' * 62}{Colors.RESET}")
+        for date in sorted(by_date):
+            frac = by_date[date] / max_day
+            seg = "█" * max(1, int(20 * frac)) if by_date[date] else "·"
+            color = Colors.GREEN if frac < .5 else (Colors.YELLOW if frac < .8 else Colors.RED)
+            print(f"  {date}  {color}{seg:<20}{Colors.RESET} {money(by_date[date]):>9}")
+        print(f"  {Colors.DIM}{'─' * 62}{Colors.RESET}")
+    print(f"{Colors.DIM}  Last checked: {datetime.now():%Y-%m-%d %H:%M:%S}{Colors.RESET}")
+
+
+def main():
+    ap = argparse.ArgumentParser(
+        prog="ormon",
+        description="OpenRouter usage monitor: account-wide + per-key usage via a management key.",
+        epilog=f"Key is stored at {KEY_FILE} (0600) on first run; change it with --set-key.",
+    )
+    ap.add_argument("--set-key", action="store_true", help="prompt for a new management key and replace the saved one")
+    ap.add_argument("--days", type=int, default=0, metavar="N",
+                    help="show usage for the last N days (1-30, from the activity API) instead of the key list")
+    ap.add_argument("--key", metavar="NAME", default=None,
+                    help="with --days: filter activity to the API key with this name")
+    ap.add_argument("--models", action="store_true", help="with --days: show the per-model table")
+    ap.add_argument("--daily", action="store_true", help="with --days: show the daily bar chart")
+    args = ap.parse_args()
+
+    if args.set_key:
+        try:
+            os.remove(KEY_FILE)
+        except FileNotFoundError:
+            pass
+
+    key = load_key()
+    masked = key[:8] + "•" * 10 + key[-4:]
+    print(f"{Colors.DIM}Using management key: {masked}{Colors.RESET}\n")
+
+    if args.days:
+        show_activity(key, args.days, args.key,
+                      show_models=args.models, show_daily=args.daily)
+        return
+
+    # Account-wide
+    try:
+        credits = get("/credits", key)
+        total, used = credits.get("total_credits", 0), credits.get("total_usage", 0)
+        pct = (used / total * 100) if total else 0
+        print(f"{Colors.BOLD}┌─ Account ─────────────────────────────────────────────┐{Colors.RESET}")
+        print(f"  Purchased: {money(total)}")
+        print(f"  Used:      {money(used)}")
+        print(f"  Remaining: {money(total - used)}")
+        print(f"  {bar(pct)}")
+        print(f"{Colors.BOLD}└───────────────────────────────────────────────────────┘{Colors.RESET}\n")
+    except Exception as e:
+        print(f"{Colors.RED}✗ Account usage failed: {e}{Colors.RESET}\n")
+
+    # Per-key usage (management key can list them all)
+    try:
+        keys = get("/keys", key)
+        rows = keys if isinstance(keys, list) else keys.get("data", [])
+        rows = [r for r in rows if isinstance(r, dict)]
+        total_k = sum((r.get("usage") or 0) for r in rows)
+        print(f"{Colors.BOLD}  Keys{Colors.RESET}  {Colors.DIM}·  {len(rows)} keys · {money(total_k)} total{Colors.RESET}")
+        print(f"  {Colors.DIM}{'─' * 62}{Colors.RESET}")
+        print(f"  {'Name':<22} {'Used':>10} {'Limit':>10} {'Left':>10}  Bar")
+        for k in sorted(rows, key=lambda x: x.get("usage", 0), reverse=True):
+            name = (k.get("name") or k.get("label") or "unnamed")[:22]
+            used_k = k.get("usage") or 0
+            limit_k = k.get("limit")
+            if limit_k:
+                pct = used_k / limit_k * 100
+                b = bar(pct, 12)
+                left = money(limit_k - used_k)
+                lim = money(limit_k)
+            else:
+                b = f"{Colors.DIM}{'·' * 12}  no cap{Colors.RESET}"
+                left = "—"
+                lim = "none"
+            print(f"  {name:<22} {money(used_k):>10} {lim:>10} {left:>10}  {b}")
+        print(f"  {Colors.DIM}{'─' * 62}{Colors.RESET}")
+        print(f"{Colors.DIM}  Last checked: {datetime.now():%Y-%m-%d %H:%M:%S}{Colors.RESET}")
+    except Exception as e:
+        print(f"{Colors.RED}✗ Key list failed: {e}{Colors.RESET}")
+
+
+if __name__ == "__main__":
+    main()
