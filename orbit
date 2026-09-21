@@ -177,12 +177,13 @@ def main():
         epilog=f"Key is stored at {KEY_FILE} (0600) on first run; change it with --set-key.",
     )
     ap.add_argument("--set-key", action="store_true", help="prompt for a new management key and replace the saved one")
-    ap.add_argument("--days", type=int, default=0, metavar="N",
-                    help="show usage for the last N days (1-30, from the activity API) instead of the key list")
-    ap.add_argument("--key", metavar="NAME", default=None,
-                    help="with --days: filter activity to the API key with this name")
-    ap.add_argument("--models", action="store_true", help="with --days: show the per-model table")
-    ap.add_argument("--daily", action="store_true", help="with --days: show the daily bar chart")
+    sub = ap.add_subparsers(dest="command", metavar="command")
+    days_p = sub.add_parser("days", help="show usage for the last N days (1-30, from the activity API) instead of the key list")
+    days_p.add_argument("days", type=int, metavar="N", help="number of days (1-30)")
+    days_p.add_argument("--key", metavar="NAME", default=None,
+                        help="filter activity to the API key with this name")
+    days_p.add_argument("--models", action="store_true", help="show the per-model table")
+    days_p.add_argument("--daily", action="store_true", help="show the daily bar chart")
     args = ap.parse_args()
 
     if args.set_key:
@@ -195,7 +196,7 @@ def main():
     masked = key[:8] + "•" * 10 + key[-4:]
     print(f"{Colors.DIM}Using management key: {masked}{Colors.RESET}\n")
 
-    if args.days:
+    if args.command == "days":
         show_activity(key, args.days, args.key,
                       show_models=args.models, show_daily=args.daily)
         return
