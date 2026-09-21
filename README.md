@@ -1,10 +1,9 @@
 # ORbit
 
-**OpenRouter usage monitor — a little CLI called `orbit`, kept by Crow.**
+**OpenRouter usage monitor — a small CLI called `orbit`.**
 
-What started as a quick "how much have I spent" script grew, edit by edit, into our
-own thing: per-key credit tracking, activity windows, colored bars, Omer-approved
-table style. So it earned a proper home.
+Started as a quick "how much have I spent" script and grew into a proper tool:
+per-key credit tracking, activity windows, colored bars, compact table style.
 
 ## What it does
 - `orbit` — account-wide credits + per-key usage with caps, bars and totals

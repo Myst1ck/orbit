@@ -6,7 +6,7 @@ Source: `README.md`, `orbit.wrapper.sh`, `fetch-orbit.sh`.
 | Command | Purpose |
 |---------|---------|
 | `orbit` | Account credits + per-key usage |
-| `orbit --days N [--key NAME]` | Per-model/per-day activity, last 30 UTC days |
+| `orbit days N [--key NAME]` | Per-model/per-day activity, last 30 UTC days |
 | `orbit --set-key` | Rotate stored management key |
 
 ## Paths
