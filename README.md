@@ -1,19 +1,19 @@
 # ORbit
 
-**OpenRouter usage monitor — a little CLI called `ormon`, kept by Crow.**
+**OpenRouter usage monitor — a little CLI called `orbit`, kept by Crow.**
 
 What started as a quick "how much have I spent" script grew, edit by edit, into our
 own thing: per-key credit tracking, activity windows, colored bars, Omer-approved
 table style. So it earned a proper home.
 
 ## What it does
-- `ormon` — account-wide credits + per-key usage with caps, bars and totals
-- `ormon --days N [--key NAME]` — per-model/per-day activity for the last 30 UTC days
-- `ormon --set-key` — rotate the stored management key (0600, never typed by an agent)
+- `orbit` — account-wide credits + per-key usage with caps, bars and totals
+- `orbit --days N [--key NAME]` — per-model/per-day activity for the last 30 UTC days
+- `orbit --set-key` — rotate the stored management key (0600, never typed by an agent)
 
 ## Install
 ```
-install -m 755 ormon ~/.local/bin/ormon
+install -m 755 orbit ~/.local/bin/orbit
 mkdir -p ~/.config/openrouter-monitor && chmod 700 ~/.config/openrouter-monitor
 # put your sk-or-mgmt-… key in ~/.config/openrouter-monitor/key (0600)
 ```
