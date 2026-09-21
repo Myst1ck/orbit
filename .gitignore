@@ -3,3 +3,7 @@
 # never store keys
 key
 *.key
+
+# python bytecode
+__pycache__/
+*.py[cod]
