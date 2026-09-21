@@ -6,7 +6,7 @@ Source: `README.md`, `orbit.wrapper.sh`.
 
 ## Key points
 - Account-wide credits + per-key usage, caps, colored bars, totals.
-- `--days N [--key NAME]` shows per-model/per-day activity for last 30 UTC days.
+- `days N [--key NAME]` shows per-model/per-day activity for last 30 UTC days. `days` is a subcommand; `N` is a required positional int.
 - `--set-key` rotates stored management key (0600, never typed by agent).
 - Per-key endpoints accept any normal `sk-or-v1-` key.
 - Account-wide/admin endpoints need management key `sk-or-mgmt-…`.
@@ -14,7 +14,7 @@ Source: `README.md`, `orbit.wrapper.sh`.
 ## Minimal example
 ```
 orbit
-orbit --days 7 --key mykey
+orbit days 7 --key mykey
 orbit --set-key
 ```
 
