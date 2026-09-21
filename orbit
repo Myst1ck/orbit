@@ -172,7 +172,7 @@ def show_activity(key: str, days: int, key_name: str | None, show_models: bool, 
 
 def main():
     ap = argparse.ArgumentParser(
-        prog="ormon",
+        prog="orbit",
         description="OpenRouter usage monitor: account-wide + per-key usage via a management key.",
         epilog=f"Key is stored at {KEY_FILE} (0600) on first run; change it with --set-key.",
     )
